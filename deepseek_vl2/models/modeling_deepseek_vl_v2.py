@@ -335,7 +335,9 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
         
     def encode_images(self, 
                       images: torch.FloatTensor, 
-                      images_spatial_crop: torch.LongTensor):
+                      images_spatial_crop: torch.LongTensor,
+                      use_cuda: bool = True,
+                      cuda_batch_size: int = 3):
         
         bs, max_n_images, _ = images_spatial_crop.shape
         batch_num_tiles = [0 for _ in range(bs)]
@@ -354,11 +356,21 @@ class DeepseekVLV2ForCausalLM(DeepseekVLV2PreTrainedModel):
         assert total_tiles.shape[0] == sum(batch_num_tiles)
         assert total_tiles.shape[0] > 0
 
-        # [batch_all_tiles, vit_seq_len, c]
-        images_feature = self.vision(total_tiles)
+        if not use_cuda:
+            # [batch_all_tiles, vit_seq_len, c]
+            images_feature = self.vision(total_tiles)
 
-        # [batch_all_tiles, hw, D]
-        return self.projector(images_feature)
+            # [batch_all_tiles, hw, D]
+            return self.projector(images_feature)
+        else:
+            projected_features = []
+            self.projector.cuda()
+            self.vision.cuda()
+            for idx in range(0, total_tiles.shape[0], cuda_batch_size):
+                projected_features.append(
+                    self.projector(self.vision(total_tiles[idx: idx + cuda_batch_size].cuda())).cpu()
+                )
+            return torch.cat(projected_features, dim=0)
     
     def prepare_input_embeds_from_feats(self,
                                         input_ids: torch.LongTensor,
