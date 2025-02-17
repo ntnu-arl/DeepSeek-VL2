@@ -22,6 +22,7 @@ from typing import Dict, List
 
 import PIL.Image
 import torch
+from pathlib import Path
 from transformers import AutoModelForCausalLM
 
 
@@ -39,6 +40,17 @@ def load_pretrained_model(model_path: str):
     vl_gpt = vl_gpt.to(torch.bfloat16).cuda().eval()
 
     return tokenizer, vl_chat_processor, vl_gpt
+
+
+def load_pil_images_from_paths(paths: List[Path]) -> List[PIL.Image.Image]:
+    pil_images = []
+
+    for image_path in paths:
+        pil_img = PIL.Image.open(image_path)
+        pil_img = pil_img.convert("RGB")
+        pil_images.append(pil_img)
+
+    return pil_images
 
 
 def load_pil_images(conversations: List[Dict[str, str]]) -> List[PIL.Image.Image]:

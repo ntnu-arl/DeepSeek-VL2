@@ -596,10 +596,207 @@ class DeepseekVLV2Processor(ProcessorMixin):
 
         return tokenized_str, images_list, images_seq_mask, images_spatial_crop, num_image_tokens
 
+    def encode_images(
+                 self,
+                 images: List[Image.Image],
+                 apply_sft_format: bool = False,
+                 force_batchify: bool = True,
+                 **kwargs,
+    ):
+        """
+        Encodes the images.
+        
+        Args:
+            images (List[ImageType]): The list of images.
+            apply_sft_format (bool): If True, then apply the SFT format to the images.
+            force_batchify (bool): If True, then force batchify the inputs.
+            inference_mode (bool): If True, then remove the last eos token.
+            **kwargs:
+            
+        Returns:
+            tokenized_image (List[int]): The tokenized image.
+            images_list (torch.FloatTensor): The list of images.
+            images_seq_mask (torch.BoolTensor): The image sequence mask.
+            images_spatial_crop (torch.LongTensor): The image spatial crop.
+            num_image_tokens (List[int]): The number of image tokens.
+        """
+        
+        # tokenized_str, masked_tokenized_str, images_list, images_seq_mask, images_spatial_crop, num_image_tokens = self.format_messages_v2(
+        #         conversations, images)
+        
+        num_image_tokens = []
+        cropping = len(images) <= 2
+        images_list, images_seq_mask, images_spatial_crop = [], [], []
+        num_image_tokens = []
+        
+        for image in images:
+            """select best resolution for anyres"""
+            if cropping:
+                best_width, best_height = select_best_resolution(image.size, self.candidate_resolutions)
+            else:
+                best_width, best_height = self.image_size, self.image_size
+                """process the global view"""
+            global_view = ImageOps.pad(image, (self.image_size, self.image_size),
+                                       color=tuple(int(x * 255) for x in self.image_transform.mean))
+            images_list.append(self.image_transform(global_view))
+
+            """process the local views"""
+            local_view = ImageOps.pad(image, (best_width, best_height),
+                                      color=tuple(int(x * 255) for x in self.image_transform.mean))
+            for i in range(0, best_height, self.image_size):
+                for j in range(0, best_width, self.image_size):
+                    images_list.append(
+                        self.image_transform(local_view.crop((j, i, j + self.image_size, i + self.image_size))))
+
+            """record height / width crop num"""
+            num_width_tiles, num_height_tiles = best_width // self.image_size, best_height // self.image_size
+            images_spatial_crop.append([num_width_tiles, num_height_tiles])
+
+            """add image tokens"""
+            h = w = math.ceil((self.image_size // self.patch_size) / self.downsample_ratio)
+            # global views tokens h * (w + 1), 1 is for line seperator
+            tokenized_image = [self.image_token_id] * h * (w + 1)
+            # add a seperator between global and local views
+            tokenized_image += [self.image_token_id]
+            # local views tokens, (num_height_tiles * h) * (num_width_tiles * w + 1)
+            tokenized_image += [self.image_token_id] * (num_height_tiles * h) * (num_width_tiles * w + 1)
+            images_seq_mask += [True] * len(tokenized_image)
+            num_image_tokens.append(len(tokenized_image))
+        assert len(images_spatial_crop) == len(num_image_tokens), f"image number should be compatible"
+        
+        images_seq_mask = torch.tensor(images_seq_mask, dtype=torch.bool)
+        if len(images_list) == 0:
+            images_list = torch.zeros((1, 3, self.image_size, self.image_size))
+            images_spatial_crop = torch.zeros((1, 2), dtype=torch.long)
+        else:
+            images_list = torch.stack(images_list, dim=0)
+            images_spatial_crop = torch.tensor(images_spatial_crop, dtype=torch.long)
+        
+        return tokenized_image, images_list.to(torch.bfloat16), images_seq_mask, images_spatial_crop, num_image_tokens, best_width, best_height
+
+    def encode_conversations_and_features(self,
+                                          conversations: List[Dict[str, str]],
+                                          best_width: int,
+                                          best_height: int,   
+                                          projected_features: torch.Tensor,
+                                          images_spatial_crop: torch.Tensor,
+                                          num_image_tokens: List[int],
+                                          inference_mode: bool = True,
+                                          force_batchify: bool = True,
+                                          system_prompt: str = "",
+                                          **kwargs):
+        
+        sft_format = self.format_messages(
+                conversations=conversations,
+                sft_format=self.sft_format,
+                system_prompt=system_prompt)
+        
+        # Format messages
+        tokenized_data = []
+        masked_tokenized_data = []  # labels
+        
+        conv = get_conv_template(self.sft_format)
+        conv_system_message = conv.system_message
+        
+        images_seq_mask = []
+        for idx, message in enumerate(conversations):
+            if idx == 0:
+                tokenized_data += [self.bos_id]
+                masked_tokenized_data += [self.bos_id]
+                images_seq_mask += [False]
+                conv.system_message = conv_system_message
+            else:
+                conv.system_message = ''
+
+            if message['role'] == conv.roles[0] or message['role'] == "user":
+                conv.reset_message()
+                conv.append_message(conv.roles[0], str(message['content']).strip())
+                conv.append_message(conv.roles[1], '')
+                formatted_question = conv.get_prompt()
+                # Tokenize with images
+                images_seq_mask_tokenize = []
+                text_splits = formatted_question.split(self.image_token)
+                tokenized_str = []
+                text_sep = text_splits[0]
+                tokenized_sep = self.encode(text_sep, bos=False, eos=False)
+                tokenized_str += tokenized_sep
+                images_seq_mask_tokenize += [False] * len(tokenized_sep)
+                h = w = math.ceil((self.image_size // self.patch_size) / self.downsample_ratio)
+                num_width_tiles, num_height_tiles = best_width // self.image_size, best_height // self.image_size
+                tokenized_image = [self.image_token_id] * h * (w + 1)
+                # add a seperator between global and local views
+                tokenized_image += [self.image_token_id]
+                # local views tokens, (num_height_tiles * h) * (num_width_tiles * w + 1)
+                tokenized_image += [self.image_token_id] * (num_height_tiles * h) * (num_width_tiles * w + 1)
+
+                tokenized_str += tokenized_image
+                images_seq_mask_tokenize += [True] * len(tokenized_image)
+                tokenized_sep = self.encode(text_splits[-1], bos=False, eos=False)
+                tokenized_str += tokenized_sep
+                images_seq_mask_tokenize += [False] * len(tokenized_sep)
+                
+                # End tokenize with images
+                tokenized_data += tokenized_str
+                if self.mask_prompt:
+                    masked_tokenized_data += [self.ignore_id] * len(tokenized_str)
+                else:
+                    masked_tokenized_data += tokenized_str
+                images_seq_mask += images_seq_mask_tokenize
+            
+            elif message['role'] == conv.roles[1] or message['role'] == "assistant":
+                formatted_answer = message['content'].strip()
+                assert formatted_answer.count(
+                    self.image_token) == 0, f"there should be no {self.image_token} in the assistant's reply, but got {conversations}"
+                # Tokenize with images
+                text_splits = formatted_answer.split(self.image_token)
+                tokenized_str = []
+                images_seq_mask_tokenize = []
+                tokenized_sep = self.encode(text_splits[-1], bos=False, eos=False)
+                tokenized_str += tokenized_sep
+                images_seq_mask_tokenize += [False] * len(tokenized_sep)
+                tokenized_str = tokenized_str + [self.eos_id]
+                images_seq_mask_tokenize += [False]
+                
+                # End tokenize with images
+                tokenized_data += tokenized_str
+                masked_tokenized_data += tokenized_str
+                images_seq_mask += images_seq_mask_tokenize
+                
+        # After format messages
+        input_ids = torch.LongTensor(tokenized_data)
+        target_ids = torch.LongTensor(masked_tokenized_data)
+        images_seq_mask = torch.tensor(images_seq_mask, dtype=torch.bool)
+        
+        target_ids[(input_ids < 0) | (input_ids == self.image_token_id)] = self.ignore_id
+        input_ids[input_ids < 0] = self.pad_id
+
+        if inference_mode:
+            # 去掉结尾的eos token
+            assert input_ids[-1] == self.eos_id
+            input_ids = input_ids[:-1]
+            target_ids = target_ids[:-1]
+            images_seq_mask = images_seq_mask[:-1]
+            
+        prepare = VLChatProcessorOutput(
+            sft_format=sft_format,
+            input_ids=input_ids,
+            target_ids=target_ids,
+            images=projected_features,
+            images_seq_mask=images_seq_mask,
+            images_spatial_crop=images_spatial_crop,
+            num_image_tokens=num_image_tokens
+        )
+        
+        if force_batchify:
+            prepare = self.batchify([prepare], images=False)
+
+        return prepare
+                          
     def batchify(
             self,
             sample_list: List[VLChatProcessorOutput],
-            padding: Literal["left", "right"] = "left"
+            padding: Literal["left", "right"] = "left",
+            images: bool = True
     ) -> BatchCollateOutput:
         """
         Preprocesses the inputs for multimodal inference.
@@ -637,19 +834,24 @@ class DeepseekVLV2Processor(ProcessorMixin):
             batched_images_seq_mask = pad_sequence(batched_images_seq_mask, batch_first=True, padding_value=0)
             batched_attention_mask = batched_input_ids != self.pad_id
 
-        """padding images to max_patch_num"""
-        max_n_patches = max(sample["images"].shape[0] for sample in sample_list)
-        batched_images = []
-        for sample in sample_list:
-            images = sample["images"]
-            n_pads = max_n_patches - images.shape[0]
-            if n_pads > 0:
-                pad_images = torch.zeros((n_pads, *images.shape[1:]), dtype=images.dtype)
-                images = torch.cat([images, pad_images], dim=0)
-            batched_images.append(images)
-        batched_images = torch.stack(batched_images, dim=0)
 
-        """padding images_spatial_crop to max_n_images"""
+        if images:
+            """padding images to max_patch_num"""
+            max_n_patches = max(sample["images"].shape[0] for sample in sample_list)
+            batched_images = []
+            for sample in sample_list:
+                images = sample["images"]
+                n_pads = max_n_patches - images.shape[0]
+                if n_pads > 0:
+                    pad_images = torch.zeros((n_pads, *images.shape[1:]), dtype=images.dtype)
+                    images = torch.cat([images, pad_images], dim=0)
+                batched_images.append(images)
+            batched_images = torch.stack(batched_images, dim=0)
+
+            """padding images_spatial_crop to max_n_images"""
+        else:
+            batched_images = sample_list[0]["images"]
+        
         max_n_images = max(sample["images_spatial_crop"].shape[0] for sample in sample_list)
         batched_images_spatial_crop = []
         for sample in sample_list:
