@@ -28,7 +28,7 @@ from transformers import LlamaTokenizerFast
 from transformers.processing_utils import ProcessorMixin
 from PIL import Image, ImageOps
 
-from .conversation import get_conv_template
+from semantic_inference_python.models.deepseek.deepseek_vl2.models.conversation import get_conv_template
 
 
 def select_best_resolution(image_size, candidate_resolutions):
@@ -599,6 +599,7 @@ class DeepseekVLV2Processor(ProcessorMixin):
     def encode_images(
                  self,
                  images: List[Image.Image],
+                 cropping: bool = True,
                  apply_sft_format: bool = False,
                  force_batchify: bool = True,
                  **kwargs,
@@ -625,7 +626,6 @@ class DeepseekVLV2Processor(ProcessorMixin):
         #         conversations, images)
         
         num_image_tokens = []
-        cropping = len(images) <= 2
         images_list, images_seq_mask, images_spatial_crop = [], [], []
         num_image_tokens = []
         
