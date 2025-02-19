@@ -17,7 +17,7 @@
 # IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-from .processing_deepseek_vl_v2 import DeepseekVLV2Processor
+from .processing_deepseek_vl_v2 import DeepseekVLV2Processor, select_best_resolution
 from .modeling_deepseek_vl_v2 import DeepseekVLV2ForCausalLM
 
 __all__ = [
