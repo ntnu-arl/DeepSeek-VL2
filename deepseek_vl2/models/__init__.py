@@ -18,7 +18,8 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 from .processing_deepseek_vl_v2 import DeepseekVLV2Processor, select_best_resolution
-from .modeling_deepseek_vl_v2 import DeepseekVLV2ForCausalLM
+from .modeling_deepseek_vl_v2 import DeepseekVLV2ForCausalLM, MlpProjector, VisionEncoderConfig, MlpProjectorConfig
+from .siglip_vit import VisionTransformer
 
 __all__ = [
     "DeepseekVLV2Processor",
