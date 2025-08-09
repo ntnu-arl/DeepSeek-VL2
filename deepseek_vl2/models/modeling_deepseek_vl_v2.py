@@ -23,9 +23,9 @@ from transformers import (
 )
 from transformers.utils import logging
 
-from semantic_inference_python.models.deepseek.deepseek_vl2.models.siglip_vit import VisionTransformer
-from semantic_inference_python.models.deepseek.deepseek_vl2.models.configuration_deepseek import DeepseekV2Config
-from semantic_inference_python.models.deepseek.deepseek_vl2.models.modeling_deepseek import DeepseekV2ForCausalLM
+from .siglip_vit import VisionTransformer
+from .configuration_deepseek import DeepseekV2Config
+from .modeling_deepseek import DeepseekV2ForCausalLM
 
 
 logger = logging.get_logger(__name__)

@@ -28,7 +28,7 @@ from transformers import LlamaTokenizerFast
 from transformers.processing_utils import ProcessorMixin
 from PIL import Image, ImageOps
 
-from semantic_inference_python.models.deepseek.deepseek_vl2.models.conversation import get_conv_template
+from .conversation import get_conv_template
 
 
 def select_best_resolution(image_size, candidate_resolutions):
