@@ -75,7 +75,7 @@ class DeepSeekVL2(nn.Module):
                 ),
                 self.images_spatial_crop,
                 self.num_image_tokens,
-            )
+            ).to(self.device)
             inputs_embeds = self.model.prepare_input_embeds_from_feats(**prepare_inputs)
             outputs = self.model.language.generate(
                 inputs_embeds=inputs_embeds,
