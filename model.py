@@ -50,7 +50,7 @@ class DeepSeekVL2(nn.Module):
     @property
     def device(self):
         return self._canary_param.device
-    
+
     def generate_caption(self, image_embeds, prompts):
         """Generate image caption."""
         image_embeds = image_embeds.to(torch.bfloat16)
@@ -59,7 +59,7 @@ class DeepSeekVL2(nn.Module):
             conversation = [
                 {
                     "role": "<|User|>",
-                    "content": f"This is the image: <image>\n {prompt}",
+                    "content": f"<image>\n {prompt}",
                 },
                 {"role": "<|Assistant|>", "content": ""},
             ]
@@ -76,21 +76,30 @@ class DeepSeekVL2(nn.Module):
                 self.images_spatial_crop,
                 self.num_image_tokens,
             ).to(self.device)
-            inputs_embeds = self.model.prepare_input_embeds_from_feats(**prepare_inputs)
-            outputs = self.model.language.generate(
-                inputs_embeds=inputs_embeds,
-                attention_mask=prepare_inputs.attention_mask,
-                pad_token_id=self.tokenizer.eos_token_id,
-                bos_token_id=self.tokenizer.bos_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
-                max_new_tokens=1024,
-                do_sample=False,
-                use_cache=True,
-            )
-            answers.append(
-                self.tokenizer.decode(
-                    outputs[0].cpu().tolist(), skip_special_tokens=True
+            with torch.no_grad():
+                inputs_embeds = self.model.prepare_input_embeds_from_feats(**prepare_inputs)
+                outputs = self.model.generate(
+                    inputs_embeds=inputs_embeds,
+                    input_ids=prepare_inputs.input_ids,
+                    images=prepare_inputs.images,
+                    images_seq_mask=prepare_inputs.images_seq_mask,
+                    images_spatial_crop=prepare_inputs.images_spatial_crop,
+                    attention_mask=prepare_inputs.attention_mask,
+                    past_key_values=None,
+                    pad_token_id=self.tokenizer.eos_token_id,
+                    bos_token_id=self.tokenizer.bos_token_id,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                    max_new_tokens=512,
+                    do_sample=True,
+                    temperature=0.4,
+                    top_p=0.9,
+                    repetition_penalty=1.1,
+                    use_cache=True,
                 )
-            )
+                answers.append(
+                    self.tokenizer.decode(
+                        outputs[0].cpu().tolist(), skip_special_tokens=True
+                    )
+                )
 
         return answers
