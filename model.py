@@ -96,10 +96,11 @@ class DeepSeekVL2(nn.Module):
                     repetition_penalty=1.1,
                     use_cache=True,
                 )
-                answers.append(
-                    self.tokenizer.decode(
-                        outputs[0].cpu().tolist(), skip_special_tokens=True
-                    )
-                )
+                answer = self.tokenizer.decode(
+                            outputs[0].cpu().tolist(), skip_special_tokens=True
+                         )
+                answer = answer.replace(f": \n {prompt}\n\n:", "")
+                answers.append(answer.strip())
+                
 
         return answers
