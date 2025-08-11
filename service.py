@@ -9,7 +9,7 @@ model = DeepSeekVL2(DeepSeekVL2Config())
 model.to(DEVICE)
 
 
-def run_inference(job_id: str, prompts: List[str], features: List[List[List[float]]], deterministic):
+def run_inference(job_id: str, prompts: List[str], features: List[List[List[float]]], deterministic: bool):
     try:
         start_time = time.time()
         features_tensor = torch.tensor(features, dtype=torch.float32).to(DEVICE)
