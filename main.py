@@ -17,7 +17,7 @@ async def generate(
     job_id = str(uuid.uuid4())
     create_job(job_id)
     background_tasks.add_task(
-        run_inference, job_id, input_data.prompts, input_data.features
+        run_inference, job_id, input_data.prompts, input_data.features, input_data.deterministic
     )
     return JobResponse(job_id=job_id)
 

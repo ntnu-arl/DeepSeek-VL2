@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 
 class VLMInput(BaseModel):
+    deterministic: bool = True
     prompts: List[str]
     features: List[List[List[float]]]
 

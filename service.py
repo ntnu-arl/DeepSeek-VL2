@@ -9,13 +9,13 @@ model = DeepSeekVL2(DeepSeekVL2Config())
 model.to(DEVICE)
 
 
-def run_inference(job_id: str, prompts: List[str], features: List[List[List[float]]]):
+def run_inference(job_id: str, prompts: List[str], features: List[List[List[float]]], deterministic):
     try:
         start_time = time.time()
         features_tensor = torch.tensor(features, dtype=torch.float32).to(DEVICE)
         outputs = []
         for i in range(len(prompts)):
-            result = model.generate_caption(features_tensor[i][None, ...], [prompts[i]])
+            result = model.generate_caption(features_tensor[i][None, ...], [prompts[i]], deterministic=deterministic)
             outputs.append(result[0])
         print(
             f"Inference time for job {job_id}: {time.time() - start_time:.2f} seconds"
