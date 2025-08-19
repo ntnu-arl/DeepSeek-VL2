@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
 import math
-from deepseek_vl2.models import DeepseekVLV2ForCausalLM, DeepseekVLV2Processor, select_best_resolution
-from config import DeepSeekVL2Config
+from hovsg.models.deepseek.deepseek_vl2.models import DeepseekVLV2ForCausalLM, DeepseekVLV2Processor, select_best_resolution
+from hovsg.models.deepseek.config import DeepSeekVL2Config
 
 
 class DeepSeekVL2(nn.Module):

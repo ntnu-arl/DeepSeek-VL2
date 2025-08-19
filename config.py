@@ -1,14 +1,14 @@
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 import os
 from dataclasses import dataclass
 import torch
 
-load_dotenv()
+# load_dotenv()
 
 API_KEY = os.getenv("API_KEY", "arl-vlm")
 API_KEY_NAME = "X-API-Key"
 
-USE_CUDA = os.getenv("USE_CUDA", "false").lower() == "true"
+USE_CUDA = os.getenv("USE_CUDA", "true").lower() == "true"
 print(f"Using CUDA: {USE_CUDA}")
 print(f"Cuda available: {torch.cuda.is_available()}")
 DEVICE = "cuda" if USE_CUDA and torch.cuda.is_available() else "cpu"
