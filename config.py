@@ -5,7 +5,7 @@ import torch
 
 load_dotenv()
 
-API_KEY = os.getenv("API_KEY", "arl-vlm")
+API_KEY = os.getenv("API_KEY", "my-api-key")
 API_KEY_NAME = "X-API-Key"
 
 USE_CUDA = os.getenv("USE_CUDA", "false").lower() == "true"
